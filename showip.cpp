@@ -1,9 +1,11 @@
 #include <arpa/inet.h>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <ostream>
 #include <sys/socket.h>
 #include <sys/types.h>
 
@@ -27,9 +29,10 @@ int main(int argc, char *argv[]) {
   hints = {};
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_family = AF_INET6;
+  hints.ai_flags = AI_PASSIVE;
 
   // Two for one; call getaddrinfo and hold return value for failure handling
-  status = getaddrinfo(argv[1], NULL, &hints, &res);
+  status = getaddrinfo(argv[1], "4242", &hints, &res);
 
   // Invalid website received
   if (status != 0) {
@@ -56,7 +59,30 @@ int main(int argc, char *argv[]) {
          << endl; // Print cheeky C string to stream
   }
 
-  freeaddrinfo(res); // Free memory
+  int s = socket(res->ai_family, res->ai_socktype,
+                 res->ai_protocol); // Returns socket descriptor to be used for
+                                    // later sys calls
+  if (bind(s, res->ai_addr, res->ai_addrlen) == -1) {
+    cout << "bind error:" << errno << endl;
+  }
+
+  // connect(s, res->ai_addr, res->ai_addrlen);
+
+  listen(s, 10);
+
+  struct sockaddr_storage their_addr;
+  socklen_t addr_size;
+
+  addr_size = sizeof(their_addr);
+
+  int new_fd = accept(s, (struct sockaddr *)&their_addr, &addr_size);
+
+  char msg[] = "Stinker";
+  int len, bytes_sent;
+
+  len = strlen(msg);
+  bytes_sent = send(new_fd, msg, len, 0);
+  cout << bytes_sent;
 
   return 0;
 }
