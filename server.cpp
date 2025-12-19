@@ -14,6 +14,8 @@
 // Cheeky bad practice ;(
 using namespace std;
 
+#define PORT "4242"
+
 int main(int argc, char *argv[]) {
 
   struct addrinfo hints, *res,
@@ -34,7 +36,7 @@ int main(int argc, char *argv[]) {
   hints.ai_flags = AI_PASSIVE;
 
   // Two for one; call getaddrinfo and hold return value for failure handling
-  int getAddrStatus = getaddrinfo(argv[1], NULL, &hints, &res);
+  int getAddrStatus = getaddrinfo(argv[1], PORT, &hints, &res);
 
   // Invalid website received
   if (getAddrStatus != 0) {
@@ -60,5 +62,49 @@ int main(int argc, char *argv[]) {
     cout << argv[1] << " IP: " << ipStrC
          << endl; // Print cheeky C string to stream
   }
+
+  int s = socket(res->ai_family, res->ai_socktype,
+                 res->ai_protocol); // Returns socket descriptor to be used for
+                                    // later sys calls
+
+  /*int bindStatus = bind(s, res->ai_addr, res->ai_addrlen);
+  if(bindStatus == -1) {
+    cout << "bind error:" << errno << endl;
+    exit(EXIT_FAILURE);
+  }*/
+
+  int connectStatus = connect(s, res->ai_addr, res->ai_addrlen);
+  if (connectStatus == 0) {
+    cout << "Connection made to " << argv[1] << " on port " << PORT << endl;
+  } else if (connectStatus == -1) {
+    perror("connect");
+  }
+
+  listen(s, 10);
+
+  // Accept and handle external connections
+  struct sockaddr_storage peer_addr;
+  int peer_name;
+  socklen_t addr_size;
+  auto externalAddr = (struct sockaddr *)&peer_addr; // Auto bailout
+
+  addr_size = sizeof(peer_addr);
+
+  int new_fd = accept(s, externalAddr, &addr_size);
+  if (new_fd == -1) {
+    perror("accept");
+  }
+
+  auto msg = "Stinker";
+  int len, bytes_sent;
+
+  len = strlen(msg);
+  bytes_sent = send(new_fd, msg, len, 0);
+  if (bytes_sent == -1) {
+    perror("send");
+  } else {
+    cout << bytes_sent;
+  }
+
   return 0;
 }
