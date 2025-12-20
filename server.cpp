@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <asm-generic/socket.h>
+#include <csignal>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -11,21 +12,45 @@
 #include <ostream>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 using namespace std;
 
 #define PORT "4242"
 
+void sigchld_handler(int s) {
+
+  (void)s;
+
+  int saved_errno = errno;
+
+  while (waitpid(-1, NULL, WNOHANG) > 0)
+    ;
+
+  errno = saved_errno;
+}
+
+void *get_in_addr(struct sockaddr *sa) {
+  if (sa->sa_family == AF_INET) {
+    return &(((struct sockaddr_in *)sa)->sin_addr);
+  }
+  return &(((struct sockaddr_in6 *)sa)->sin6_addr);
+}
+
 int main(int argc, char *argv[]) {
 
   struct addrinfo hints, *res,
       *pointer; // hints for getaddrinfo hints arg, res holds response of
                 // getaddrinfo, and pointer holds next struct of linked list
-  int status;   // Determines outcome of getaddrinfo call
+  int status, newfd;             // Determines outcome of getaddrinfo call
   char ipStrC[INET6_ADDRSTRLEN]; // Holds C string of IPv6
   int socketfd;
   int yes = 1;
+  struct sigaction sa;
+  struct sockaddr_storage peer_addr;
+  char s[INET6_ADDRSTRLEN];
+
   // Setup hints for getaddrinfo
   hints = {};
   hints.ai_socktype = SOCK_STREAM;
@@ -39,10 +64,6 @@ int main(int argc, char *argv[]) {
     perror("getaddrinfo");
     exit(EXIT_FAILURE);
   }
-
-  int s = socket(res->ai_family, res->ai_socktype,
-                 res->ai_protocol); // Returns socket descriptor to be used for
-                                    // later sys calls
 
   /*int bindStatus = bind(s, res->ai_addr, res->ai_addrlen);
   if(bindStatus == -1) {
@@ -83,6 +104,42 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
+  // End finished processes
+  sa.sa_handler = sigchld_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESTART;
+  if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+    perror("sigaction");
+    exit(1);
+  }
+
+  cout << "server: waiting for connections...\n";
+
+  while (1) {
+    socklen_t sin_size = sizeof(peer_addr);
+    newfd = accept(socketfd, (struct sockaddr *)&peer_addr, &sin_size);
+
+    if (newfd == -1) {
+      perror("accept");
+    }
+
+    inet_ntop(peer_addr.ss_family, get_in_addr((struct sockaddr *)&peer_addr),
+              s, sizeof(s));
+
+    cout << "server: received connection from " << s << "\n";
+
+    if (!fork()) {
+      close(socketfd);
+      if (send(newfd, "Sock it loser", 12, 0) == -1) {
+        perror("send");
+      }
+      close(newfd);
+      exit(0);
+    }
+    close(newfd);
+  }
+
+  /*
   // Accept and handle external connections
   struct sockaddr_storage peer_addr;
   int peer_name;
@@ -105,7 +162,7 @@ int main(int argc, char *argv[]) {
     perror("send");
   } else {
     cout << bytes_sent;
-  }
+  }*/
 
   return 0;
 }
