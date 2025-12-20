@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <asm-generic/socket.h>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -10,8 +11,8 @@
 #include <ostream>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <unistd.h>
 
-// Cheeky bad practice ;(
 using namespace std;
 
 #define PORT "4242"
@@ -22,45 +23,21 @@ int main(int argc, char *argv[]) {
       *pointer; // hints for getaddrinfo hints arg, res holds response of
                 // getaddrinfo, and pointer holds next struct of linked list
   int status;   // Determines outcome of getaddrinfo call
-  char ipStrC[INET6_ADDRSTRLEN]; // Holds cheeky C string of IPv6
-
-  // Incorrect input format
-  if (argc != 2) {
-    cout << "Two arguments, just two is all I ask!" << endl;
-  }
-
-  // Spiffy up hints for getaddrinfo
+  char ipStrC[INET6_ADDRSTRLEN]; // Holds C string of IPv6
+  int socketfd;
+  int yes = 1;
+  // Setup hints for getaddrinfo
   hints = {};
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_family = AF_INET6;
   hints.ai_flags = AI_PASSIVE;
 
-  // Two for one; call getaddrinfo and hold return value for failure handling
-  int getAddrStatus = getaddrinfo(argv[1], PORT, &hints, &res);
+  // Call getaddrinfo and hold return value for failure handling
+  int getAddrStatus = getaddrinfo(NULL, PORT, &hints, &res);
 
-  // Invalid website received
   if (getAddrStatus != 0) {
-    cout << "Go look it up if you don't believe me: '" << argv[1]
-         << "' is not a real website! Give me a proper one and I'll tell you "
-            "its IPv6!"
-         << endl;
+    perror("getaddrinfo");
     exit(EXIT_FAILURE);
-  }
-
-  // Iterate through each retrieved IPv6 from getaddrinfo call
-  for (pointer = res; pointer != NULL; pointer = pointer->ai_next) {
-
-    void *addr; // Pointer to IPv6 field of addressStruct
-    auto *addressStruct = reinterpret_cast<struct sockaddr_in6 *>(
-        pointer->ai_addr); // Gosh I love C++
-
-    addr = &(addressStruct->sin6_addr); // Set equal to memory location of IPv6
-                                        // in addressStruct
-
-    inet_ntop(pointer->ai_family, addr, ipStrC,
-              sizeof ipStrC); // Convert addr into cheeky C string
-    cout << argv[1] << " IP: " << ipStrC
-         << endl; // Print cheeky C string to stream
   }
 
   int s = socket(res->ai_family, res->ai_socktype,
@@ -73,24 +50,48 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }*/
 
-  int connectStatus = connect(s, res->ai_addr, res->ai_addrlen);
-  if (connectStatus == 0) {
-    cout << "Connection made to " << argv[1] << " on port " << PORT << endl;
-  } else if (connectStatus == -1) {
-    perror("connect");
+  // int connectStatus = connect(s, res->ai_addr, res->ai_addrlen);
+
+  for (pointer = res; pointer != NULL; pointer = pointer->ai_next) {
+
+    if ((socketfd = socket(pointer->ai_family, pointer->ai_socktype,
+                           pointer->ai_protocol)) == -1) {
+      perror("socket");
+      continue;
+    }
+
+    if (setsockopt(socketfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) ==
+        -1) {
+      perror("setsockopt");
+      exit(1);
+    }
+
+    if (int bindStatus =
+            bind(socketfd, pointer->ai_addr, pointer->ai_addrlen) == -1) {
+      close(socketfd);
+      perror("bind");
+      continue;
+    }
+
+    break;
   }
 
-  listen(s, 10);
+  freeaddrinfo(res);
+
+  if (listen(socketfd, 10) == -1) {
+    perror("listen");
+    exit(1);
+  }
 
   // Accept and handle external connections
   struct sockaddr_storage peer_addr;
   int peer_name;
-  socklen_t addr_size;
-  auto externalAddr = (struct sockaddr *)&peer_addr; // Auto bailout
+  socklen_t peer_addr_size;
+  auto externalAddr = (struct sockaddr *)&peer_addr;
 
-  addr_size = sizeof(peer_addr);
+  peer_addr_size = sizeof(peer_addr);
 
-  int new_fd = accept(s, externalAddr, &addr_size);
+  int new_fd = accept(s, externalAddr, &peer_addr_size);
   if (new_fd == -1) {
     perror("accept");
   }
