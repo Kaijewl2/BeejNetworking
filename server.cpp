@@ -1,6 +1,5 @@
 #include <arpa/inet.h>
 #include <asm-generic/socket.h>
-#include <csignal>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -9,7 +8,6 @@
 #include <iostream>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <ostream>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -29,13 +27,6 @@ void sigchld_handler(int s) {
     ;
 
   errno = saved_errno;
-}
-
-void *get_in_addr(struct sockaddr *sa) {
-  if (sa->sa_family == AF_INET) {
-    return &(((struct sockaddr_in *)sa)->sin_addr);
-  }
-  return &(((struct sockaddr_in6 *)sa)->sin6_addr);
 }
 
 int main(int argc, char *argv[]) {
@@ -64,14 +55,6 @@ int main(int argc, char *argv[]) {
     perror("getaddrinfo");
     exit(EXIT_FAILURE);
   }
-
-  /*int bindStatus = bind(s, res->ai_addr, res->ai_addrlen);
-  if(bindStatus == -1) {
-    cout << "bind error:" << errno << endl;
-    exit(EXIT_FAILURE);
-  }*/
-
-  // int connectStatus = connect(s, res->ai_addr, res->ai_addrlen);
 
   for (pointer = res; pointer != NULL; pointer = pointer->ai_next) {
 
@@ -117,14 +100,13 @@ int main(int argc, char *argv[]) {
 
   while (1) {
     socklen_t sin_size = sizeof(peer_addr);
-    newfd = accept(socketfd, (struct sockaddr *)&peer_addr, &sin_size);
-
-    if (newfd == -1) {
+    if ((newfd = accept(socketfd, (struct sockaddr *)&peer_addr, &sin_size)) ==
+        -1) {
       perror("accept");
     }
 
-    inet_ntop(peer_addr.ss_family, get_in_addr((struct sockaddr *)&peer_addr),
-              s, sizeof(s));
+    inet_ntop(peer_addr.ss_family, &peer_addr, s,
+              sizeof(s)); // Convert peer addr to C str
 
     cout << "server: received connection from " << s << "\n";
 
@@ -138,31 +120,6 @@ int main(int argc, char *argv[]) {
     }
     close(newfd);
   }
-
-  /*
-  // Accept and handle external connections
-  struct sockaddr_storage peer_addr;
-  int peer_name;
-  socklen_t peer_addr_size;
-  auto externalAddr = (struct sockaddr *)&peer_addr;
-
-  peer_addr_size = sizeof(peer_addr);
-
-  int new_fd = accept(s, externalAddr, &peer_addr_size);
-  if (new_fd == -1) {
-    perror("accept");
-  }
-
-  auto msg = "Stinker";
-  int len, bytes_sent;
-
-  len = strlen(msg);
-  bytes_sent = send(new_fd, msg, len, 0);
-  if (bytes_sent == -1) {
-    perror("send");
-  } else {
-    cout << bytes_sent;
-  }*/
 
   return 0;
 }
