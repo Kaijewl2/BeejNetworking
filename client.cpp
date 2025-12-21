@@ -1,21 +1,25 @@
 #include <arpa/inet.h>
 #include <cstddef>
 #include <cstdio>
-#include <errno.h>
+#include <cstdlib>
 #include <iostream>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
 #define PORT "4242"
+#define MAXDATA 100
 
 using namespace std;
 
 int main() {
 
-  int self_fd, new_fd, socket_fd;
+  int self_fd, new_fd, socket_fd, num_bytes;
   struct addrinfo hints, *res, *res_ptr;
   char server_addr[INET6_ADDRSTRLEN];
+  char server_message[MAXDATA];
 
   hints = {};
   hints.ai_family = AF_UNSPEC;
@@ -35,19 +39,29 @@ int main() {
 
     inet_ntop(res_ptr->ai_family, res_ptr, server_addr, sizeof(server_addr));
 
-    cout << "connecting to " << server_addr << "...\n\n";
+    cout << "attempting connection with " << server_addr << "...\n\n";
 
     if ((connect(socket_fd, res_ptr->ai_addr, res_ptr->ai_addrlen) == -1)) {
-      perror("connection: connect");
+      perror("connect");
       continue;
     }
-    close(socket_fd);
+    break;
   }
 
   freeaddrinfo(res);
 
   cout << "connection established with " << server_addr << " on port " << PORT
        << "\n\n";
+
+  if ((num_bytes = recv(socket_fd, server_message, MAXDATA - 1, 0)) == -1) {
+    perror("recv");
+  }
+
+  server_message[num_bytes] = '\0';
+
+  cout << server_message;
+
+  close(socket_fd);
 
   return 0;
 }
